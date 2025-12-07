@@ -1,396 +1,13 @@
-use std::{
-    fmt::Debug,
-    fs::{self},
-    path::Path,
-};
+/// Task Tracker CLI - Main Entry Point
 
-use chrono::{DateTime, Local};
-use json::{JsonValue, object};
-use prettytable::{Table, row};
-use tracing::{info, debug, warn, error};
-
-#[derive(Debug)]
-enum TaskStatus {
-    ToDo,
-    InProgress,
-    Done,
-}
-
-struct Task {
-    id: u32,
-    description: String,
-    status: TaskStatus,
-    created_at: DateTime<Local>,
-    updated_at: DateTime<Local>,
-}
-
-impl Task {
-    fn new(id: u32, desc: String) -> Self {
-        Task {
-            id: id,
-            description: desc,
-            status: TaskStatus::ToDo,
-            created_at: Local::now(),
-            updated_at: Local::now(),
-        }
-    }
-    fn updated(&mut self) {
-        self.updated_at = Local::now();
-    }
-
-    fn update(&mut self, desc: String) {
-        self.description = desc;
-        self.updated();
-    }
-    fn mark_in_progress(&mut self) {
-        self.status = TaskStatus::InProgress;
-        self.updated();
-    }
-    fn mark_done(&mut self) {
-        self.status = TaskStatus::Done;
-        self.updated();
-    }
-
-    fn to_json(&self) -> JsonValue {
-        object! {
-            "id" => self.id,
-            "description" => self.description.clone(),
-            "status" => format!("{:?}", self.status),
-            "created_at" => self.created_at.to_rfc3339(),
-            "updated_at" => self.updated_at.to_rfc3339(),
-        }
-    }
-
-    fn from_json(json: &JsonValue) -> Option<Self> {
-        Some(Task {
-            id: json["id"].as_u32()?,
-            description: json["description"].as_str()?.to_string(),
-            status: match json["status"].as_str()? {
-                "ToDo" => TaskStatus::ToDo,
-                "InProgress" => TaskStatus::InProgress,
-                "Done" => TaskStatus::Done,
-                _ => return None,
-            },
-            created_at: DateTime::parse_from_rfc3339(json["created_at"].as_str()?)
-                .ok()?
-                .with_timezone(&Local),
-            updated_at: DateTime::parse_from_rfc3339(json["updated_at"].as_str()?)
-                .ok()?
-                .with_timezone(&Local),
-        })
-    }
-}
-struct ID {
-    current_id: u32,
-}
-impl ID {
-    fn new(start_value: Option<u32>) -> Self {
-        match start_value {
-            Some(current_id) => ID {
-                current_id: current_id,
-            },
-            None => ID { current_id: 0 },
-        }
-    }
-    fn generate(&mut self) -> u32 {
-        (*self).current_id += 1;
-        self.current_id
-    }
-}
-
-struct FileStorage {
-    path: String,
-}
-
-impl FileStorage {
-    fn new(path: Option<String>) -> Self {
-        match path {
-            Some(_path) => FileStorage { path: _path },
-            None => FileStorage {
-                path: format!("temp/{}", Local::now().timestamp_millis().to_string()),
-            },
-        }
-    }
-
-    fn save(&self, data: String) {
-        match fs::exists(self.path.clone()) {
-            Ok(exist) => {
-                if !exist {
-                    let path = Path::new(&self.path);
-                    match fs::create_dir_all(path.parent().expect("Enable to get parent dir.")) {
-                        Ok(_) => {
-                            debug!("Directory created: {}", self.path);
-                        },
-                        Err(error) => {
-                            error!("Failed to create directory: {}", error);
-                        }
-                    }
-                }
-            }
-            Err(error) => {
-                error!("File system error: {}", error);
-            }
-        }
-
-        match fs::write(self.path.clone(), data) {
-            Ok(_) => {
-                debug!("Data saved successfully to: {}", self.path);
-            },
-            Err(error) => {
-                error!("Failed to save data: {}", error);
-            }
-        }
-    }
-
-    fn get(&self) -> Option<String> {
-        match fs::read_to_string(self.path.clone()) {
-            Ok(content) => {
-                debug!("Data loaded from: {}", self.path);
-                Some(content)
-            },
-            Err(error) => {
-                warn!("Failed to read file {}: {}", self.path, error);
-                None
-            }
-        }
-    }
-}
-struct TaskManager {
-    tasks: Vec<Task>,
-    id_generator: ID,
-}
-
-impl TaskManager {
-    fn new() -> Self {
-        TaskManager {
-            tasks: Vec::new(),
-            id_generator: ID::new(None),
-        }
-    }
-
-    fn add_task(&mut self, desc: String) {
-        let task = Task::new(self.id_generator.generate(), desc);
-        self.tasks.push(task);
-    }
-
-    fn get_task(&self, id: u32) -> Option<&Task> {
-        self.tasks.iter().find(|&task| task.id == id)
-    }
-
-    fn get_task_mut(&mut self, id: u32) -> Option<&mut Task> {
-        self.tasks.iter_mut().find(|task| task.id == id)
-    }
-
-    fn remove_task(&mut self, id: u32) {
-        self.tasks.retain(|task| task.id != id);
-    }
-
-    fn to_json_string(&self) -> (String, u32) {
-        let json_array = self.tasks.iter().map(|t| t.to_json()).collect::<Vec<_>>();
-        (
-            json::JsonValue::Array(json_array).to_string(),
-            self.id_generator.current_id,
-        )
-    }
-
-    fn from_json_string(json_str: &str, current_id: u32) -> Option<Self> {
-        let parsed = json::parse(json_str).ok()?;
-        let mut tasks = Vec::new();
-        for item in parsed.members() {
-            if let Some(task) = Task::from_json(item) {
-                tasks.push(task);
-            }
-        }
-        Some(TaskManager {
-            tasks,
-            id_generator: ID::new(Some(current_id)),
-        })
-    }
-}
-enum TaskManagerOperation {
-    Add,
-    Delete,
-    MarkInProgress,
-    MarkDone,
-    UpdateDesc,
-    Get,
-    List,
-}
-
-fn task_manager_factory(path: Option<String>) -> (TaskManager, Box<dyn Fn(&TaskManager)>) {
-    let id_store = FileStorage::new(Some("temp/id".to_string()));
-    let store = FileStorage::new(path);
-    let store_content = store.get().unwrap_or("[]".to_string());
-    debug!("Loading tasks from storage");
-    let task = TaskManager::from_json_string(
-        &store_content,
-        id_store
-            .get()
-            .unwrap_or("0".to_string())
-            .parse::<u32>()
-            .unwrap_or(0),
-    )
-    .unwrap_or(TaskManager::new());
-
-    let save = move |taskmanger: &TaskManager| {
-        let (task_data, id) = taskmanger.to_json_string();
-        id_store.save(id.to_string());
-        store.save(task_data);
-    };
-
-    (task, Box::new(save))
-}
-
-fn display_task(task: &Task) {
-    let mut table = Table::new();
-    table.add_row(row!["ID", "Description", "Status", "Created At", "Updated At"]);
-    table.add_row(row![
-        task.id,
-        task.description,
-        format!("{:?}", task.status),
-        task.created_at.format("%Y-%m-%d %H:%M:%S"),
-        task.updated_at.format("%Y-%m-%d %H:%M:%S")
-    ]);
-    table.printstd();
-}
-
-fn display_tasks(tasks: &[Task]) {
-    if tasks.is_empty() {
-        info!("No tasks to display");
-        return;
-    }
-
-    let mut table = Table::new();
-    table.add_row(row!["ID", "Description", "Status", "Created At", "Updated At"]);
-    
-    for task in tasks {
-        table.add_row(row![
-            task.id,
-            task.description,
-            format!("{:?}", task.status),
-            task.created_at.format("%Y-%m-%d %H:%M:%S"),
-            task.updated_at.format("%Y-%m-%d %H:%M:%S")
-        ]);
-    }
-    
-    println!("\n");
-    table.printstd();
-    println!("\n");
-}
-
-fn exec(
-    op: TaskManagerOperation,
-    path: Option<String>,
-    task_id: Option<u32>,
-    description: Option<String>,
-) {
-    let (mut taskmanager, save) = task_manager_factory(path);
-
-    match op {
-        TaskManagerOperation::Add => {
-            if let Some(desc) = description {
-                taskmanager.add_task(desc.clone());
-                info!("✓ Task added: \"{}\"", desc);
-                debug!("Task ID: {}", taskmanager.tasks.last().unwrap().id);
-            } else {
-                error!("❌ Error: Description required for adding a task");
-            }
-        }
-        TaskManagerOperation::Delete => {
-            if let Some(id) = task_id {
-                taskmanager.remove_task(id);
-                info!("✓ Task {} deleted", id);
-                debug!("Remaining tasks: {}", taskmanager.tasks.len());
-            } else {
-                error!("❌ Error: Task ID required for deletion");
-            }
-        }
-        TaskManagerOperation::MarkInProgress => {
-            if let Some(id) = task_id {
-                if let Some(task) = taskmanager.get_task_mut(id) {
-                    task.mark_in_progress();
-                    info!("✓ Task {} marked as In Progress", id);
-                    debug!("Task status updated at: {}", task.updated_at);
-                } else {
-                    error!("❌ Error: Task {} not found", id);
-                }
-            } else {
-                error!("❌ Error: Task ID required");
-            }
-        }
-        TaskManagerOperation::MarkDone => {
-            if let Some(id) = task_id {
-                if let Some(task) = taskmanager.get_task_mut(id) {
-                    task.mark_done();
-                    info!("✓ Task {} marked as Done", id);
-                    debug!("Task status updated at: {}", task.updated_at);
-                } else {
-                    error!("❌ Error: Task {} not found", id);
-                }
-            } else {
-                error!("❌ Error: Task ID required");
-            }
-        }
-        TaskManagerOperation::UpdateDesc => {
-            if let Some(id) = task_id {
-                if let Some(desc) = description {
-                    if let Some(task) = taskmanager.get_task_mut(id) {
-                        let old_desc = task.description.clone();
-                        task.update(desc.clone());
-                        info!("✓ Task {} updated: \"{}\" → \"{}\"", id, old_desc, desc);
-                        debug!("Task status updated at: {}", task.updated_at);
-                    } else {
-                        error!("❌ Error: Task {} not found", id);
-                    }
-                } else {
-                    error!("❌ Error: Description required for update");
-                }
-            } else {
-                error!("❌ Error: Task ID required");
-            }
-        }
-        TaskManagerOperation::Get => {
-            if let Some(id) = task_id {
-                if let Some(task) = taskmanager.get_task(id) {
-                    debug!("Retrieving task with ID: {}", id);
-                    display_task(task);
-                } else {
-                    error!("❌ Error: Task {} not found", id);
-                }
-            } else {
-                error!("❌ Error: Task ID required");
-            }
-        }
-        TaskManagerOperation::List => {
-            debug!("Listing all tasks (Total: {})", taskmanager.tasks.len());
-            display_tasks(&taskmanager.tasks);
-        }
-    }
-
-    save(&taskmanager);
-}
-// fn interact() {
-//     println!("===== WELCOME TO TASK TRACKER INTERACT MODE ====");
-//     print_help(true);
-//     loop {
-//         let mut args: String = String::new();
-//         println!("Enter the command: ");
-//         std::io::stdin().read_line(&mut args).expect("Log");
-//         let args: Vec<String> = args
-//             .trim()
-//             .split_whitespace()
-//             .map(|arg| arg.to_string())
-//             .collect();
-//         println!("Provided Arguments: {:?}", args);
-//     }
-// }
+use task_tracker_cli::cli::{TaskCommand, TaskOperation, execute_command};
+use tracing::info;
 
 fn main() {
-    // Initialize logging based on RUST_LOG environment variable
-    // Default to info level for production, debug level when RUST_LOG is set
+    // Initialize logging
     let log_level = std::env::var("RUST_LOG")
         .unwrap_or_else(|_| "info".to_string());
-    
+
     tracing_subscriber::fmt()
         .with_env_filter(log_level)
         .with_target(true)
@@ -399,82 +16,102 @@ fn main() {
         .init();
 
     info!("Starting Task Tracker CLI");
+
+    let storage_path = std::env::var("TASKS_STORE_PATH")
+        .unwrap_or_else(|_| "temp/tasks".to_string());
     
-    let path = std::env::var("TASKS_STORE_PATH").unwrap_or("temp/tasks".to_string());
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 2 {
-        print_help(false);
+        print_help();
         return;
     }
 
-    let command = &args[1];
-    let path = Some(path);
-    debug!("Command: {}", command);
+    let command_str = &args[1];
 
-    match command.as_str() {
+    let command = match command_str.as_str() {
         "add" => {
             let description = args.get(2).map(|s| s.clone());
-            exec(TaskManagerOperation::Add, path, None, description);
+            TaskCommand {
+                operation: TaskOperation::Add,
+                task_id: None,
+                description,
+            }
         }
         "remove" => {
-            if let Some(id_str) = args.get(2) {
-                let task_id = id_str.parse::<u32>().ok();
-                exec(TaskManagerOperation::Delete, path, task_id, None);
+            let task_id = args.get(2).and_then(|s| s.parse::<u32>().ok());
+            TaskCommand {
+                operation: TaskOperation::Delete,
+                task_id,
+                description: None,
             }
         }
         "mark-in-progress" => {
-            if let Some(id_str) = args.get(2) {
-                let task_id = id_str.parse::<u32>().ok();
-                exec(TaskManagerOperation::MarkInProgress, path, task_id, None);
+            let task_id = args.get(2).and_then(|s| s.parse::<u32>().ok());
+            TaskCommand {
+                operation: TaskOperation::MarkInProgress,
+                task_id,
+                description: None,
             }
         }
         "done" => {
-            if let Some(id_str) = args.get(2) {
-                let task_id = id_str.parse::<u32>().ok();
-                exec(TaskManagerOperation::MarkDone, path, task_id, None);
+            let task_id = args.get(2).and_then(|s| s.parse::<u32>().ok());
+            TaskCommand {
+                operation: TaskOperation::MarkDone,
+                task_id,
+                description: None,
             }
         }
         "edit" => {
-            if let Some(id_str) = args.get(2) {
-                let task_id = id_str.parse::<u32>().ok();
-                let description = args.get(3).map(|s| s.clone());
-                exec(TaskManagerOperation::UpdateDesc, path, task_id, description);
+            let task_id = args.get(2).and_then(|s| s.parse::<u32>().ok());
+            let description = args.get(3).map(|s| s.clone());
+            TaskCommand {
+                operation: TaskOperation::UpdateDesc,
+                task_id,
+                description,
             }
         }
         "get" => {
-            if let Some(id_str) = args.get(2) {
-                let task_id = id_str.parse::<u32>().ok();
-                exec(TaskManagerOperation::Get, path, task_id, None);
+            let task_id = args.get(2).and_then(|s| s.parse::<u32>().ok());
+            TaskCommand {
+                operation: TaskOperation::Get,
+                task_id,
+                description: None,
             }
         }
         "list" => {
-            exec(TaskManagerOperation::List, path, None, None);
+            TaskCommand {
+                operation: TaskOperation::List,
+                task_id: None,
+                description: None,
+            }
         }
-        "help" => print_help(false),
-        // "interact" => interact(),
-        _ => println!(
-            "Unknown command: {}. Use 'help' for usage instructions.",
-            command
-        ),
-    }
+        "help" => {
+            print_help();
+            return;
+        }
+        _ => {
+            println!(
+                "Unknown command: {}. Use 'help' for usage instructions.",
+                command_str
+            );
+            return;
+        }
+    };
+
+    execute_command(command, storage_path);
 }
 
-fn print_help(is_interact: bool) {
-    println!(
-        "Usage: {} <command> [options]",
-        if is_interact { "task-tracker-cli" } else { "" }
-    );
+fn print_help() {
+    println!("Usage: task-tracker-cli <command> [options]");
+    println!();
     println!("Commands:");
     println!("  add <description>           - Add a new task");
-    println!("  remove <id>                 - remove a task");
+    println!("  remove <id>                 - Remove a task");
     println!("  mark-in-progress <id>       - Mark task as in progress");
     println!("  done <id>                   - Mark task as done");
     println!("  edit <id> <description>     - Edit task description");
     println!("  get <id>                    - Get task details");
-    println!("  list                        - List all task");
+    println!("  list                        - List all tasks");
     println!("  help                        - Show this help message");
-    if !is_interact {
-      //  println!("  interact                    - Start interact mode");
-    }
 }
