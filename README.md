@@ -1,11 +1,14 @@
 # rust-task-tracker_cli
 
-A small Rust command-line task tracker for managing TODOs and simple tasks locally. Designed to be minimal, fast, and scriptable.
+A lightweight, fast Rust command-line task tracker for managing TODOs and simple tasks locally. Designed to be minimal, scriptable, and user-friendly with beautiful formatted output.
 
 ## Features
-- Add, list, complete, edit, and remove tasks
-- Persistent local storage (JSON)
-- Simple, human-readable output for piping and scripting
+- ✅ Add, list, complete, edit, and remove tasks
+- 📁 Persistent local storage (JSON)
+- 🎨 Beautiful formatted table output
+- 📊 Colored logging (debug, info, warn, error)
+- 🚀 Fast and lightweight
+- 📝 Human-readable output for piping and scripting
 
 ## Requirements
 - Rust toolchain (rustc + cargo) — https://rustup.rs
@@ -21,51 +24,72 @@ cargo install --path .
 ```
 
 ## Quick start
-Add a task:
+
+### Add a task
 ```bash
-task-tracker-cli add "Buy groceries"
+cargo run -- add "Buy groceries"
 ```
 
-List tasks:
+### List all tasks
 ```bash
-task-tracker-cli list
+cargo run -- list
 ```
 
-Mark a task done:
+### Mark a task in progress
 ```bash
-task-tracker-cli done 3
-```
-Mark a task in progress: 
-```bash 
-task-tracker-cli start 3
-```
-Remove a task:
-```bash
-task-tracker-cli remove 4
+cargo run -- mark-in-progress 1
 ```
 
-Edit a task:
+### Mark a task as done
 ```bash
-task-tracker-cli edit 2 "Read Rust book chapter 7"
+cargo run -- done 1
 ```
 
-<!-- Export tasks:
+### Remove a task
 ```bash
-task-tracker-cli export tasks.json
+cargo run -- remove 1
 ```
 
-Import tasks:
+### Edit a task description
 ```bash
-task-tracker-cli import tasks.json
-``` -->
+cargo run -- edit 1 "Read Rust book chapter 7"
+```
 
-Run in development:
+### Get a specific task
 ```bash
-cargo run -- <command> [...]
+cargo run -- get 1
 ```
 
 ## Storage
-Tasks are stored in a simple local file (e.g. in the project directory or a user data directory). The format is human-readable (JSON) to allow manual edits and easy interoperability.
+Tasks are stored in a simple local file (e.g., `temp/tasks.json` or a user data directory). The format is human-readable JSON to allow manual edits and easy interoperability.
+
+## Logging & Output
+
+### Production mode (minimal logs)
+```bash
+cargo run -- list
+```
+
+### Debug mode (detailed logs)
+```bash
+RUST_LOG=debug cargo run -- add "My task"
+```
+
+### Log levels
+```bash
+RUST_LOG=trace cargo run -- list     # Very detailed
+RUST_LOG=debug cargo run -- list     # Technical details
+RUST_LOG=info cargo run -- list      # Info/warn/error only (default)
+```
+
+## Project Structure
+```
+src/
+├── main.rs                 # Main entry point, CLI logic, and task management
+├── models/                 # (Optional) Traits and interfaces
+├── task.rs                 # (Optional) Task struct and methods
+└── task_manager.rs         # (Optional) TaskManager struct and methods
+```
 
 ## Testing & Linting
 Run tests:
@@ -79,19 +103,28 @@ cargo fmt
 cargo clippy -- -D warnings
 ```
 
+## Dependencies
+- **chrono** - Date/time handling
+- **json** - JSON parsing and serialization
+- **prettytable-rs** - Beautiful table formatting
+- **tracing** - Structured logging
+- **tracing-subscriber** - Log filtering and formatting
+
 ## Contributing
 - Fork the repo, create a branch, and open a pull request.
 - Follow idiomatic Rust and include tests for new behavior.
 - Keep changes small and focused.
 
 ## License
-Licenced MIT. See [LICENSE](./LICENSE) file for details.
+Licensed MIT. See [LICENSE](./LICENSE) file for details.
 
-## Roadmap 
-- Search and filter by status or text
-- Export/import tasks
-- Add priority and due-date metadata
-- Subcommands for recurring tasks
-- Sync backend (optional)
+## Roadmap
+- 🔍 Search and filter by status or text
+- 📤 Export/import tasks
+- ⭐ Add priority and due-date metadata
+- 🔄 Subcommands for recurring tasks
+- ☁️ Sync backend (optional)
+- 📱 Interactive mode (planned)
 
-Questions or feature requests: open an issue in the repository.
+## Questions or feature requests
+Open an issue in the repository.
