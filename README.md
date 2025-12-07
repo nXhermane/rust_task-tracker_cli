@@ -11,6 +11,7 @@ A lightweight, fast Rust command-line task tracker for managing TODOs and simple
 - 📝 Human-readable output for piping and scripting
 
 ## Requirements
+- [Task Tracker Exercice](https://roadmap.sh/projects/task-tracker) 
 - Rust toolchain (rustc + cargo) — https://rustup.rs
 
 ## Installation
