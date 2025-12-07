@@ -1,4 +1,4 @@
-# rust-task-tracker_cli
+# [rust-task-tracker_cli](https://github.com/nXhermane/rust_task-tracker_cli)
 
 A lightweight, fast Rust command-line task tracker for managing TODOs and simple tasks locally. Designed to be minimal, scriptable, and user-friendly with beautiful formatted output.
 
