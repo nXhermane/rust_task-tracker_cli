@@ -321,24 +321,40 @@ fn exec(
 
     save(&taskmanager);
 }
+// fn interact() {
+//     println!("===== WELCOME TO TASK TRACKER INTERACT MODE ====");
+//     print_help(true);
+//     loop {
+//         let mut args: String = String::new();
+//         println!("Enter the command: ");
+//         std::io::stdin().read_line(&mut args).expect("Log");
+//         let args: Vec<String> = args
+//             .trim()
+//             .split_whitespace()
+//             .map(|arg| arg.to_string())
+//             .collect();
+//         println!("Provided Arguments: {:?}", args);
+//     }
+// }
 
 fn main() {
+    let path = std::env::var("TASKS_STORE_PATH").unwrap_or("temp/tasks".to_string());
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 2 {
-        print_help();
+        print_help(false);
         return;
     }
 
     let command = &args[1];
-    let path = None;
+    let path = Some(path);
 
     match command.as_str() {
         "add" => {
             let description = args.get(2).map(|s| s.clone());
             exec(TaskManagerOperation::Add, path, None, description);
         }
-        "delete" => {
+        "remove" => {
             if let Some(id_str) = args.get(2) {
                 let task_id = id_str.parse::<u32>().ok();
                 exec(TaskManagerOperation::Delete, path, task_id, None);
@@ -350,13 +366,13 @@ fn main() {
                 exec(TaskManagerOperation::MarkInProgress, path, task_id, None);
             }
         }
-        "mark-done" => {
+        "done" => {
             if let Some(id_str) = args.get(2) {
                 let task_id = id_str.parse::<u32>().ok();
                 exec(TaskManagerOperation::MarkDone, path, task_id, None);
             }
         }
-        "update" => {
+        "edit" => {
             if let Some(id_str) = args.get(2) {
                 let task_id = id_str.parse::<u32>().ok();
                 let description = args.get(3).map(|s| s.clone());
@@ -372,7 +388,8 @@ fn main() {
         "list" => {
             exec(TaskManagerOperation::List, path, None, None);
         }
-        "help" => print_help(),
+        "help" => print_help(false),
+        // "interact" => interact(),
         _ => println!(
             "Unknown command: {}. Use 'help' for usage instructions.",
             command
@@ -380,15 +397,21 @@ fn main() {
     }
 }
 
-fn print_help() {
-    println!("Usage: task-tracker-cli <command> [options]");
+fn print_help(is_interact: bool) {
+    println!(
+        "Usage: {} <command> [options]",
+        if is_interact { "task-tracker-cli" } else { "" }
+    );
     println!("Commands:");
     println!("  add <description>           - Add a new task");
-    println!("  delete <id>                 - Delete a task");
+    println!("  remove <id>                 - remove a task");
     println!("  mark-in-progress <id>       - Mark task as in progress");
-    println!("  mark-done <id>              - Mark task as done");
-    println!("  update <id> <description>   - Update task description");
+    println!("  done <id>                   - Mark task as done");
+    println!("  edit <id> <description>     - Edit task description");
     println!("  get <id>                    - Get task details");
     println!("  list                        - List all task");
     println!("  help                        - Show this help message");
+    if !is_interact {
+      //  println!("  interact                    - Start interact mode");
+    }
 }
