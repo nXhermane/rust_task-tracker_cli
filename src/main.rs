@@ -6,6 +6,8 @@ use std::{
 
 use chrono::{DateTime, Local};
 use json::{JsonValue, object};
+use prettytable::{Table, row};
+use tracing::{info, debug, warn, error};
 
 #[derive(Debug)]
 enum TaskStatus {
@@ -49,12 +51,6 @@ impl Task {
         self.updated();
     }
 
-    fn print(&self) {
-        println!(
-            "TASK: {}\t\"{}\"\t{:?}\t{}\t{}",
-            self.id, self.description, self.status, self.created_at, self.updated_at,
-        )
-    }
     fn to_json(&self) -> JsonValue {
         object! {
             "id" => self.id,
@@ -122,25 +118,38 @@ impl FileStorage {
                 if !exist {
                     let path = Path::new(&self.path);
                     match fs::create_dir_all(path.parent().expect("Enable to get parent dir.")) {
-                        Ok(_) => println!("Dir create successfully."),
-                        Err(error) => println!("Erreur : {}", error),
+                        Ok(_) => {
+                            debug!("Directory created: {}", self.path);
+                        },
+                        Err(error) => {
+                            error!("Failed to create directory: {}", error);
+                        }
                     }
                 }
             }
-            Err(error) => println!("Erreur : {}", error),
+            Err(error) => {
+                error!("File system error: {}", error);
+            }
         }
 
         match fs::write(self.path.clone(), data) {
-            Ok(_) => println!("Saved successfully."),
-            Err(error) => println!("Erreur : {}", error),
+            Ok(_) => {
+                debug!("Data saved successfully to: {}", self.path);
+            },
+            Err(error) => {
+                error!("Failed to save data: {}", error);
+            }
         }
     }
 
     fn get(&self) -> Option<String> {
         match fs::read_to_string(self.path.clone()) {
-            Ok(content) => Some(content),
+            Ok(content) => {
+                debug!("Data loaded from: {}", self.path);
+                Some(content)
+            },
             Err(error) => {
-                println!("Erreur : {}", error);
+                warn!("Failed to read file {}: {}", self.path, error);
                 None
             }
         }
@@ -212,6 +221,7 @@ fn task_manager_factory(path: Option<String>) -> (TaskManager, Box<dyn Fn(&TaskM
     let id_store = FileStorage::new(Some("temp/id".to_string()));
     let store = FileStorage::new(path);
     let store_content = store.get().unwrap_or("[]".to_string());
+    debug!("Loading tasks from storage");
     let task = TaskManager::from_json_string(
         &store_content,
         id_store
@@ -231,6 +241,43 @@ fn task_manager_factory(path: Option<String>) -> (TaskManager, Box<dyn Fn(&TaskM
     (task, Box::new(save))
 }
 
+fn display_task(task: &Task) {
+    let mut table = Table::new();
+    table.add_row(row!["ID", "Description", "Status", "Created At", "Updated At"]);
+    table.add_row(row![
+        task.id,
+        task.description,
+        format!("{:?}", task.status),
+        task.created_at.format("%Y-%m-%d %H:%M:%S"),
+        task.updated_at.format("%Y-%m-%d %H:%M:%S")
+    ]);
+    table.printstd();
+}
+
+fn display_tasks(tasks: &[Task]) {
+    if tasks.is_empty() {
+        info!("No tasks to display");
+        return;
+    }
+
+    let mut table = Table::new();
+    table.add_row(row!["ID", "Description", "Status", "Created At", "Updated At"]);
+    
+    for task in tasks {
+        table.add_row(row![
+            task.id,
+            task.description,
+            format!("{:?}", task.status),
+            task.created_at.format("%Y-%m-%d %H:%M:%S"),
+            task.updated_at.format("%Y-%m-%d %H:%M:%S")
+        ]);
+    }
+    
+    println!("\n");
+    table.printstd();
+    println!("\n");
+}
+
 fn exec(
     op: TaskManagerOperation,
     path: Option<String>,
@@ -243,79 +290,80 @@ fn exec(
         TaskManagerOperation::Add => {
             if let Some(desc) = description {
                 taskmanager.add_task(desc.clone());
-                println!("✓ Task added: \"{}\"", desc);
+                info!("✓ Task added: \"{}\"", desc);
+                debug!("Task ID: {}", taskmanager.tasks.last().unwrap().id);
             } else {
-                println!("✗ Error: Description required for adding a task");
+                error!("❌ Error: Description required for adding a task");
             }
         }
         TaskManagerOperation::Delete => {
             if let Some(id) = task_id {
                 taskmanager.remove_task(id);
-                println!("✓ Task {} deleted", id);
+                info!("✓ Task {} deleted", id);
+                debug!("Remaining tasks: {}", taskmanager.tasks.len());
             } else {
-                println!("✗ Error: Task ID required for deletion");
+                error!("❌ Error: Task ID required for deletion");
             }
         }
         TaskManagerOperation::MarkInProgress => {
             if let Some(id) = task_id {
                 if let Some(task) = taskmanager.get_task_mut(id) {
                     task.mark_in_progress();
-                    println!("✓ Task {} marked as In Progress", id);
+                    info!("✓ Task {} marked as In Progress", id);
+                    debug!("Task status updated at: {}", task.updated_at);
                 } else {
-                    println!("✗ Error: Task {} not found", id);
+                    error!("❌ Error: Task {} not found", id);
                 }
             } else {
-                println!("✗ Error: Task ID required");
+                error!("❌ Error: Task ID required");
             }
         }
         TaskManagerOperation::MarkDone => {
             if let Some(id) = task_id {
                 if let Some(task) = taskmanager.get_task_mut(id) {
                     task.mark_done();
-                    println!("✓ Task {} marked as Done", id);
+                    info!("✓ Task {} marked as Done", id);
+                    debug!("Task status updated at: {}", task.updated_at);
                 } else {
-                    println!("✗ Error: Task {} not found", id);
+                    error!("❌ Error: Task {} not found", id);
                 }
             } else {
-                println!("✗ Error: Task ID required");
+                error!("❌ Error: Task ID required");
             }
         }
         TaskManagerOperation::UpdateDesc => {
             if let Some(id) = task_id {
                 if let Some(desc) = description {
                     if let Some(task) = taskmanager.get_task_mut(id) {
+                        let old_desc = task.description.clone();
                         task.update(desc.clone());
-                        println!("✓ Task {} updated: \"{}\"", id, desc);
+                        info!("✓ Task {} updated: \"{}\" → \"{}\"", id, old_desc, desc);
+                        debug!("Task status updated at: {}", task.updated_at);
                     } else {
-                        println!("✗ Error: Task {} not found", id);
+                        error!("❌ Error: Task {} not found", id);
                     }
                 } else {
-                    println!("✗ Error: Description required for update");
+                    error!("❌ Error: Description required for update");
                 }
             } else {
-                println!("✗ Error: Task ID required");
+                error!("❌ Error: Task ID required");
             }
         }
         TaskManagerOperation::Get => {
             if let Some(id) = task_id {
                 if let Some(task) = taskmanager.get_task(id) {
-                    task.print();
+                    debug!("Retrieving task with ID: {}", id);
+                    display_task(task);
                 } else {
-                    println!("✗ Error: Task {} not found", id);
+                    error!("❌ Error: Task {} not found", id);
                 }
             } else {
-                println!("✗ Error: Task ID required");
+                error!("❌ Error: Task ID required");
             }
         }
         TaskManagerOperation::List => {
-            if taskmanager.tasks.is_empty() {
-                println!("No tasks found.");
-            } else {
-                println!("Tasks:");
-                for task in &taskmanager.tasks {
-                    task.print();
-                }
-            }
+            debug!("Listing all tasks (Total: {})", taskmanager.tasks.len());
+            display_tasks(&taskmanager.tasks);
         }
     }
 
@@ -338,6 +386,20 @@ fn exec(
 // }
 
 fn main() {
+    // Initialize logging based on RUST_LOG environment variable
+    // Default to info level for production, debug level when RUST_LOG is set
+    let log_level = std::env::var("RUST_LOG")
+        .unwrap_or_else(|_| "info".to_string());
+    
+    tracing_subscriber::fmt()
+        .with_env_filter(log_level)
+        .with_target(true)
+        .with_thread_ids(false)
+        .with_line_number(false)
+        .init();
+
+    info!("Starting Task Tracker CLI");
+    
     let path = std::env::var("TASKS_STORE_PATH").unwrap_or("temp/tasks".to_string());
     let args: Vec<String> = std::env::args().collect();
 
@@ -348,6 +410,7 @@ fn main() {
 
     let command = &args[1];
     let path = Some(path);
+    debug!("Command: {}", command);
 
     match command.as_str() {
         "add" => {
