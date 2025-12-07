@@ -85,11 +85,32 @@ RUST_LOG=info cargo run -- list      # Info/warn/error only (default)
 ## Project Structure
 ```
 src/
-├── main.rs                 # Main entry point, CLI logic, and task management
-├── models/                 # (Optional) Traits and interfaces
-├── task.rs                 # (Optional) Task struct and methods
-└── task_manager.rs         # (Optional) TaskManager struct and methods
+├── lib.rs                  # Library root with module declarations
+├── main.rs                 # CLI entry point and command parsing
+├── models/
+│   ├── mod.rs             # Model traits (Serializable, Identifiable)
+│   └── task_status.rs     # TaskStatus enum
+├── task/
+│   ├── mod.rs             # Task struct and Serializable impl
+│   └── manager.rs         # TaskManager and IdGenerator structs
+├── storage/
+│   ├── mod.rs             # Storage trait definition
+│   └── file_storage.rs    # FileStorage implementation
+├── ui/
+│   ├── mod.rs             # UI module
+│   └── display.rs         # display_task and display_tasks functions
+└── cli/
+    ├── mod.rs             # CLI types (TaskOperation, TaskCommand)
+    └── commands.rs        # Command execution logic
 ```
+
+### Module Organization
+
+- **models**: Data structures and traits
+- **task**: Core task management logic
+- **storage**: File persistence abstraction
+- **ui**: User interface / display formatting
+- **cli**: Command-line interface and execution
 
 ## Testing & Linting
 Run tests:
