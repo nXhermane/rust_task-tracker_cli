@@ -5,8 +5,6 @@ A small Rust command-line task tracker for managing TODOs and simple tasks local
 ## Features
 - Add, list, complete, edit, and remove tasks
 - Persistent local storage (JSON)
-- Search and filter by status or text
-- Export/import tasks
 - Simple, human-readable output for piping and scripting
 
 ## Requirements
@@ -15,8 +13,8 @@ A small Rust command-line task tracker for managing TODOs and simple tasks local
 ## Installation
 Clone and build locally:
 ```bash
-git clone https://github.com/nXhermane/rust_task-tracker_cli.git
-cd rust_task-tracker_cli
+git clone https://github.com/nXhermane/task-tracker-cli.git
+cd task-tracker-cli
 cargo build --release
 # optional: install to cargo bin directory
 cargo install --path .
@@ -25,38 +23,41 @@ cargo install --path .
 ## Quick start
 Add a task:
 ```bash
-rust_task-tracker_cli add "Buy groceries"
+task-tracker-cli add "Buy groceries"
 ```
 
 List tasks:
 ```bash
-rust_task-tracker_cli list
+task-tracker-cli list
 ```
 
 Mark a task done:
 ```bash
-rust_task-tracker_cli done 3
+task-tracker-cli done 3
 ```
-
+Mark a task in progress: 
+```bash 
+task-tracker-cli start 3
+```
 Remove a task:
 ```bash
-rust_task-tracker_cli remove 4
+task-tracker-cli remove 4
 ```
 
 Edit a task:
 ```bash
-rust_task-tracker_cli edit 2 "Read Rust book chapter 7"
+task-tracker-cli edit 2 "Read Rust book chapter 7"
 ```
 
-Export tasks:
+<!-- Export tasks:
 ```bash
-rust_task-tracker_cli export tasks.json
+task-tracker-cli export tasks.json
 ```
 
 Import tasks:
 ```bash
-rust_task-tracker_cli import tasks.json
-```
+task-tracker-cli import tasks.json
+``` -->
 
 Run in development:
 ```bash
@@ -84,9 +85,11 @@ cargo clippy -- -D warnings
 - Keep changes small and focused.
 
 ## License
-Dual-licensed under MIT OR Apache-2.0. See LICENSE file for details.
+Licenced MIT. See [LICENSE](./LICENSE) file for details.
 
 ## Roadmap 
+- Search and filter by status or text
+- Export/import tasks
 - Add priority and due-date metadata
 - Subcommands for recurring tasks
 - Sync backend (optional)
